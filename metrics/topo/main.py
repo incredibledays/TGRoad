@@ -37,7 +37,7 @@ max_lon = -71.0
 for tile_idx in [8, 9, 19, 28, 29, 39, 48, 49, 59, 68, 69, 79, 88, 89, 99, 108, 109, 119, 128, 129, 139, 148, 149, 159, 168, 169, 179]:
 
     graph_prop = '%s/region_%s_graph.p'%(args.savedir,tile_idx)
-    graph_gt = '../../datasets/test/region_%s_refine_gt_graph.p'%tile_idx
+    graph_gt = '../../datasets/cityscale/test/region_%s_refine_gt_graph.p'%tile_idx
     args.output = '%s/topo/%s.txt'%(args.savedir,tile_idx)
 
     map1 = pickle.load(open(graph_gt, "rb"))

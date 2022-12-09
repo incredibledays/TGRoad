@@ -50,3 +50,4 @@ for k, v in neighbors.items():
 		edges.append([nodemap[n1], nodemap[n2]])
 
 json.dump([nodes, edges], open(f_out, "w"), indent=2)
+

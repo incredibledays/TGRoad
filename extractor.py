@@ -1,66 +1,66 @@
+import os
 import torch
 from torch.autograd import Variable as V
 
 
 class Extractor:
-    def __init__(self, net, loss=None, eval_mode=False):
-        self.net = net().cuda()
-        self.net = torch.nn.DataParallel(self.net, device_ids=range(torch.cuda.device_count()))
-        self.sat = None
-        self.seg_gt = None
-        self.ach_gt = None
-        self.ori_gt = None
-        self.dis_gt = None
-        self.dir_gt = None
-        self.seg_pre = None
-        self.ach_pre = None
-        self.ori_pre = None
-        self.dis_pre = None
-        self.dir_pre = None
+    def __init__(self, net, loss=None, eval_mode=False, lr=0.001, step_size=50):
+        self.eval_mode = eval_mode
+        self.net = torch.nn.DataParallel(net(eval_mode=self.eval_mode).cuda(), device_ids=range(torch.cuda.device_count()))
+
         if eval_mode:
             self.net.eval()
         else:
-            self.optimizer = torch.optim.Adam(params=self.net.parameters(), lr=2e-4)
+            self.optimizer = torch.optim.Adam(params=self.net.parameters(), lr=lr)
+            self.exp_lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=step_size, gamma=0.1)
             self.loss = loss()
-            self.old_lr = 2e-4
 
-    def set_input(self, sat_batch, sao_batch=None, pof_batch=None):
-        self.sat = V(sat_batch.cuda())
-        if sao_batch is not None:
-            self.seg_gt, self.ach_gt, self.ori_gt = sao_batch.split([1, 1, 1], dim=1)
-            self.seg_gt = V(self.seg_gt.cuda())
-            self.ach_gt = V(self.ach_gt.cuda())
-            self.ori_gt = V(self.ori_gt.cuda())
-        if pof_batch is not None:
-            self.dis_gt, self.dir_gt = pof_batch.split([1, 2], dim=1)
-            self.dis_gt = V(self.dis_gt.cuda())
-            self.dir_gt = V(self.dir_gt.cuda())
+        self.sat = None
+        self.pre = None
+        self.gt = None
+
+    def set_input(self, data_batch):
+        self.sat = V(data_batch['sat'].cuda())
+        self.gt = {'seg': V(data_batch['seg'].cuda()), 'ach': V(data_batch['ach'].cuda()), 'ori': V(data_batch['ori'].cuda())}
 
     def optimize(self):
         self.optimizer.zero_grad()
-        self.seg_pre, self.ach_pre, self.ori_pre, self.dis_pre, self.dir_pre = self.net.forward(self.sat)
-        loss = self.loss(self.seg_pre, self.seg_gt, self.ach_pre, self.ach_gt, self.ori_pre, self.ori_gt, self.dis_pre, self.dis_gt, self.dir_pre, self.dir_gt)
+        self.pre = self.predict(self.sat)
+        loss = self.loss(self.pre, self.gt)
         loss.backward()
         self.optimizer.step()
         return loss.item()
 
     def predict(self, sat):
-        seg_pre, ach_pre, ori_pre, _, _ = self.net.forward(sat)
-        return seg_pre, ach_pre, ori_pre
+        return self.net.forward(sat)
 
-    def save(self, path):
-        torch.save(self.net.state_dict(), path)
+    def save(self, path, epoch_id):
+        torch.save({
+            'epoch_id': epoch_id,
+            'model_state_dict': self.net.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'exp_lr_scheduler_state_dict': self.exp_lr_scheduler.state_dict()
+        }, os.path.join(path))
 
     def load(self, path):
-        self.net.load_state_dict(torch.load(path))
+        if os.path.exists(os.path.join(path)):
+            checkpoint = torch.load(os.path.join(path))
+            model_dict = self.net.state_dict()
+            state_dict = {k: v for k, v in checkpoint['model_state_dict'].items() if k in model_dict.keys()}
+            model_dict.update(state_dict)
+            self.net.load_state_dict(model_dict)
+            if not self.eval_mode:
+                self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                self.exp_lr_scheduler.load_state_dict(checkpoint['exp_lr_scheduler_state_dict'])
+            return checkpoint['epoch_id'] + 1
+        else:
+            return 1
 
-    def update_lr(self):
-        new_lr = self.old_lr * 0.2
-        for param_group in self.optimizer.param_groups:
-            param_group['lr'] = new_lr
-        self.old_lr = new_lr
+    def update_learning_rate(self):
+        self.exp_lr_scheduler.step()
+
+    def lr(self):
+        return self.optimizer.state_dict()['param_groups'][0]['lr']
 
     def visual(self):
-        sat = (self.sat[0] + 1.6) / 3.2 * 255
-        sao = torch.cat((self.seg_pre[0], self.ach_pre[0], self.ori_pre[0] * self.seg_pre[0]), 0) * 255
-        return sat, sao
+        return self.sat, self.pre

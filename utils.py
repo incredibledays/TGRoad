@@ -9,23 +9,20 @@ def distance(p1, p2):
 
 
 def point2lineDistance(p, n1, n2):
-    l = distance(n1, n2)
+    length = distance(n1, n2)
 
     v1 = [n1[0] - p[0], n1[1] - p[1]]
     v2 = [n2[0] - p[0], n2[1] - p[1]]
 
     area = abs(v1[0] * v2[1] - v1[1] * v2[0])
 
-    # if l == 0:
-    # 	print(p, n1, n2)
     if n1 == n2:
         return 0
 
-    return area / l
+    return area / length
 
 
-def douglasPeucker(node_list, e=5):
-    new_list = []
+def douglasPeucker(node_list, e=5.0):
 
     if len(node_list) <= 2:
         return node_list
@@ -70,7 +67,6 @@ def graphInsert(node_neighbor, n1key, n2key):
 
 
 def simpilfyGraph(node_neighbor, e=2.5):
-    new_graph = {}
 
     visited = []
 
@@ -88,8 +84,6 @@ def simpilfyGraph(node_neighbor, e=2.5):
                     continue
 
                 node_list = [node, next_node]
-
-                current_node = next_node
 
                 while True:
                     if len(node_neighbor[node_list[-1]]) == 2:
